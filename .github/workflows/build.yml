@@ -1,0 +1,117 @@
+name: build-sunstrider
+
+# 云端编译 Sunstrider-legacy —— WoW 2.4.3 (TBC) 服务端
+# 用法：仓库页面 → Actions → build-sunstrider → Run workflow
+# 产物：sunstrider-2.4.3-linux-x64.zip（服务端 + 工具 + lib + sql）、world_2019_01_30.sql.zip
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Linux x64 (Ubuntu 18.04 container)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    steps:
+      - name: 写入 Dockerfile 与 build.sh
+        run: |
+          mkdir -p .build
+          cat > .build/Dockerfile <<'__DOCKERFILE__'
+          FROM ubuntu:18.04
+          ENV DEBIAN_FRONTEND=noninteractive
+          RUN sed -i -e 's|archive.ubuntu.com|old-releases.ubuntu.com|g' -e 's|security.ubuntu.com|old-releases.ubuntu.com|g' -e 's|ports.ubuntu.com|old-releases.ubuntu.com|g' /etc/apt/sources.list \
+           && apt-get update \
+           && apt-get install -y --no-install-recommends build-essential ca-certificates wget xz-utils libssl1.0-dev libboost-all-dev libmariadbclient-dev libreadline-dev \
+           && rm -rf /var/lib/apt/lists/*
+          RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4-Linux-x86_64.tar.gz -O /tmp/cmake.tgz \
+           && tar -xzf /tmp/cmake.tgz -C /opt \
+           && ln -sf /opt/cmake-3.18.4-Linux-x86_64/bin/cmake /usr/local/bin/cmake \
+           && ln -sf /opt/cmake-3.18.4-Linux-x86_64/bin/ctest /usr/local/bin/ctest \
+           && ln -sf /opt/cmake-3.18.4-Linux-x86_64/bin/cpack /usr/local/bin/cpack \
+           && rm /tmp/cmake.tgz \
+           && cmake --version
+          COPY build.sh /build/build.sh
+          RUN chmod +x /build/build.sh
+          ENTRYPOINT ["/build/build.sh"]
+          __DOCKERFILE__
+
+          cat > .build/build.sh <<'__BUILD_SH__'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          SRC="${SRC:-/src}"
+          OUT="${OUT:-/out}"
+          JOBS="${JOBS:-$(nproc)}"
+          BUILD_DIR="/build/obj"
+          [ -f "${SRC}/CMakeLists.txt" ] || { echo "!! 找不到 ${SRC}/CMakeLists.txt" >&2; exit 2; }
+          mkdir -p "${BUILD_DIR}" "${OUT}"
+          cd "${BUILD_DIR}"
+          echo "==> cmake 配置（并行 ${JOBS}）"
+          cmake "${SRC}" \
+            -DCMAKE_INSTALL_PREFIX="${OUT}" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DTOOLS=1 \
+            -DCMAKE_INSTALL_RPATH='$ORIGIN/lib;$ORIGIN' \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+          echo "==> 编译"
+          make -j"${JOBS}"
+          echo "==> 安装"
+          make install
+          echo "==> 收集运行时依赖"
+          mkdir -p "${OUT}/lib"
+          find "${OUT}" -maxdepth 3 -type f -perm -u+x -exec sh -c 'ldd "$1" 2>/dev/null || true' _ {} \; \
+            | awk '/=> \// {print $3}' | sort -u \
+            | while read -r lib; do
+                case "${lib}" in
+                  */libc.so*|*/libm.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/ld-linux*|*/libgcc_s.so*|*/libstdc++.so*) continue ;;
+                esac
+                cp -n "${lib}" "${OUT}/lib/" 2>/dev/null || true
+              done
+          echo "==> 完成"
+          ls -1 "${OUT}" | sed 's/^/    /'
+          du -sh "${OUT}" || true
+          __BUILD_SH__
+
+          chmod +x .build/build.sh
+          echo "--- 文件已生成 ---"
+          ls -l .build
+
+      - name: 构建工具链镜像
+        run: docker build --progress=plain -t sunstrider-build -f .build/Dockerfile .build
+
+      - name: 克隆 Sunstrider 源码
+        run: git clone --depth 1 https://github.com/SunstriderEmu/sunstrider-legacy.git src
+
+      - name: 编译
+        run: |
+          mkdir -p out
+          docker run --rm -v "$PWD/src:/src" -v "$PWD/out:/out" sunstrider-build
+
+      - name: 检查产物
+        run: |
+          ls -la out
+          ls -la out/bin || true
+          du -sh out
+
+      - name: 下载 world 数据库（可选）
+        continue-on-error: true
+        run: |
+          curl -fL --retry 3 -o world_2019_01_30.sql.zip \
+            https://github.com/SunstriderEmu/sunstrider-legacy/releases/download/2019_01_30/world_2019_01_30.sql.zip
+
+      - name: 打包
+        run: |
+          mkdir -p pkg/sunstrider
+          cp -a out/. pkg/sunstrider/
+          cp -a src/sql pkg/sunstrider/sql
+          cd pkg && zip -qr ../sunstrider-2.4.3-linux-x64.zip sunstrider
+          cd .. && ls -lh *.zip
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: sunstrider-2.4.3-linux-x64
+          path: |
+            sunstrider-2.4.3-linux-x64.zip
+            world_2019_01_30.sql.zip
+          if-no-files-found: warn
+          retention-days: 30

@@ -20,7 +20,7 @@ jobs:
           FROM ubuntu:18.04
           ENV DEBIAN_FRONTEND=noninteractive
           RUN apt-get update \
-           && apt-get install -y --no-install-recommends build-essential ca-certificates wget xz-utils git gcc-8 g++-8 libstdc++-8-dev libssl1.0-dev libboost-all-dev libmariadbclient-dev libreadline-dev \
+           && apt-get install -y --no-install-recommends build-essential ca-certificates wget xz-utils git gcc-8 g++-8 libstdc++-8-dev libssl1.0-dev libboost-all-dev libmariadbclient-dev libreadline-dev libbz2-dev zlib1g-dev \
            && rm -rf /var/lib/apt/lists/*
           ENV CC=gcc-8 CXX=g++-8
           RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4-Linux-x86_64.tar.gz -O /tmp/cmake.tgz \

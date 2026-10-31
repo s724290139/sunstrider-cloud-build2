@@ -19,8 +19,7 @@ jobs:
           cat > .build/Dockerfile <<'__DOCKERFILE__'
           FROM ubuntu:18.04
           ENV DEBIAN_FRONTEND=noninteractive
-          RUN sed -i -e 's|archive.ubuntu.com|old-releases.ubuntu.com|g' -e 's|security.ubuntu.com|old-releases.ubuntu.com|g' -e 's|ports.ubuntu.com|old-releases.ubuntu.com|g' /etc/apt/sources.list \
-           && apt-get update \
+          RUN apt-get update \
            && apt-get install -y --no-install-recommends build-essential ca-certificates wget xz-utils libssl1.0-dev libboost-all-dev libmariadbclient-dev libreadline-dev \
            && rm -rf /var/lib/apt/lists/*
           RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4-Linux-x86_64.tar.gz -O /tmp/cmake.tgz \

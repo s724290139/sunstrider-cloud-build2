@@ -20,7 +20,7 @@ jobs:
           FROM ubuntu:18.04
           ENV DEBIAN_FRONTEND=noninteractive
           RUN apt-get update \
-           && apt-get install -y --no-install-recommends build-essential ca-certificates wget xz-utils git gcc-8 g++-8 libstdc++-8-dev libssl1.0-dev libboost-all-dev libmariadbclient-dev libreadline-dev libbz2-dev zlib1g-dev \
+           && apt-get install -y --no-install-recommends build-essential ca-certificates wget xz-utils git gcc-8 g++-8 libstdc++-8-dev libssl1.0-dev libboost-all-dev libmariadbclient-dev libreadline-dev libbz2-dev zlib1g-dev libncurses5-dev \
            && rm -rf /var/lib/apt/lists/*
           ENV CC=gcc-8 CXX=g++-8
           RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4-Linux-x86_64.tar.gz -O /tmp/cmake.tgz \
@@ -81,10 +81,18 @@ jobs:
       - name: 克隆 Sunstrider 源码
         run: git clone --depth 1 https://github.com/SunstriderEmu/sunstrider-legacy.git src
 
+      - name: 恢复编译缓存
+        uses: actions/cache@v4
+        with:
+          path: obj
+          key: obj-${{ github.sha }}
+          restore-keys: |
+            obj-
+
       - name: 编译
         run: |
-          mkdir -p out
-          docker run --rm -v "$PWD/src:/src" -v "$PWD/out:/out" sunstrider-build
+          mkdir -p out obj
+          docker run --rm -v "$PWD/src:/src" -v "$PWD/out:/out" -v "$PWD/obj:/build/obj" sunstrider-build
 
       - name: 检查产物
         run: |

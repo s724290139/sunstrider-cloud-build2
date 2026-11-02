@@ -81,6 +81,21 @@ jobs:
       - name: 克隆 Sunstrider 源码
         run: git clone --depth 1 https://github.com/SunstriderEmu/sunstrider-legacy.git src
 
+      - name: 应用补丁（可选）
+        run: |
+          shopt -s nullglob
+          patches=(patches/*.patch)
+          if [ ${#patches[@]} -eq 0 ]; then
+            echo "仓库里没有 patches/*.patch，按原版源码编译"
+            exit 0
+          fi
+          for p in "${patches[@]}"; do
+            echo "==> git apply $p"
+            git -C src apply --whitespace=fix --verbose "$p"
+          done
+          echo "==> 已应用 ${#patches[@]} 个补丁"
+          git -C src status --short | head -50
+
       - name: 恢复编译缓存
         uses: actions/cache@v4
         with:
@@ -111,6 +126,7 @@ jobs:
           mkdir -p pkg/sunstrider
           cp -a out/. pkg/sunstrider/
           cp -a src/sql pkg/sunstrider/sql
+          if [ -d patches ]; then cp -a patches pkg/sunstrider/patches; fi
           cd pkg && zip -qr ../sunstrider-2.4.3-linux-x64.zip sunstrider
           cd .. && ls -lh *.zip
 
